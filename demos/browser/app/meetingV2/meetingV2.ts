@@ -10,6 +10,7 @@ import {
   AudioProfile,
   AudioVideoFacade,
   AudioVideoObserver,
+  CanvasVideoFrameBuffer,
   ClientMetricReport,
   ClientVideoStreamReceivingReport,
   ConsoleLogger,
@@ -43,6 +44,7 @@ import {
   TimeoutScheduler,
   Versioning,
   VideoDownlinkObserver,
+  VideoFrameBuffer,
   VideoFrameProcessor,
   VideoInputDevice,
   VideoPreference,
@@ -69,6 +71,19 @@ import {
   loadBodyPixDependency,
   platformCanSupportBodyPixWithoutDegradation,
 } from './videofilter/SegmentationUtil';
+
+const tf = require('@tensorflow/tfjs');
+const bodyPix = require('@tensorflow-models/body-pix');
+
+tf.setBackend('webgl');
+
+let model: any = null;
+
+const loadBodyPix = async () => {
+  model = await bodyPix.load();
+}
+
+loadBodyPix();
 
 let SHOULD_EARLY_CONNECT = (() => {
   return document.location.search.includes('earlyConnect=1');
@@ -225,6 +240,51 @@ interface Toggle {
   oncreate: (elem: HTMLElement) => void;
   action: () => void;
 }
+
+class BlurBackgroundProcessor implements VideoFrameProcessor {
+
+  // the target canvas where we gonna draw the blurred background
+  private targetCanvas: HTMLCanvasElement = document.createElement('canvas') as HTMLCanvasElement;
+
+  // used to retrieve the CanvasVideoFrameBuffer from the target canvas
+  private canvasVideoFrameBuffer = new CanvasVideoFrameBuffer(this.targetCanvas);
+
+  // buffers parameter represents the array of images / video sources.
+  async process(buffers: VideoFrameBuffer[]): Promise<VideoFrameBuffer[]> {
+    for (let i = 0; i < buffers.length; i++) {
+      const canvas = await buffers[i].asCanvasElement();
+
+      // error handling
+      if (canvas.width === 0 || canvas.height === 0) {
+        return buffers;
+      }
+
+      // blurry video settings
+      const backgroundBlurAmount = 3;
+      const edgeBlurAmount = 3;
+      const flipHorizontal = false;
+
+      // execute segmentPerson and blur the background
+      try {
+        const segmentation = await model.segmentPerson(canvas);
+        bodyPix.drawBokehEffect(
+          this.targetCanvas, canvas, segmentation, backgroundBlurAmount,
+          edgeBlurAmount, flipHorizontal);
+      } catch (err) {
+        console.log('blur: ', err);
+      }
+
+      // replace video frames
+      buffers[i] = this.canvasVideoFrameBuffer;
+    }
+
+    // return new video frames
+    return buffers;
+  }
+
+  async destroy() {}
+}
+
 
 export class DemoMeetingApp
   implements AudioVideoObserver, DeviceChangeObserver, ContentShareObserver, VideoDownlinkObserver {
@@ -1277,7 +1337,7 @@ export class DemoMeetingApp
   async getRelayProtocol(): Promise<void> {
     const rawStats = await this.audioVideo.getRTCPeerConnectionStats();
     if (rawStats) {
-      rawStats.forEach(report => {
+      rawStats.forEach((report: any) => {
         if (report.type === 'local-candidate') {
           this.log(`Local WebRTC Ice Candidate stats: ${JSON.stringify(report)}`);
           const relayProtocol = report.relayProtocol;
@@ -1346,7 +1406,7 @@ export class DemoMeetingApp
             name,
             attributes: {
               ...otherAttributes,
-              meetingHistory: meetingHistory.filter(({ timestampMs }) => {
+              meetingHistory: meetingHistory.filter(({ timestampMs }: any) => {
                 return Date.now() - timestampMs < DemoMeetingApp.MAX_MEETING_HISTORY_MS;
               }),
             },
@@ -1664,7 +1724,7 @@ export class DemoMeetingApp
     const reports = await this.audioVideo.getRTCPeerConnectionStats(track);
     let duration: number;
 
-    reports.forEach(report => {
+    reports.forEach((report: any) => {
       if (report.type === 'outbound-rtp') {
         // remained to be calculated
         this.log(`${id} is bound to ssrc ${report.ssrc}`);
@@ -1677,8 +1737,8 @@ export class DemoMeetingApp
     });
 
     await new TimeoutScheduler(1000).start(() => {
-      this.audioVideo.getRTCPeerConnectionStats(track).then(reports => {
-        reports.forEach(report => {
+      this.audioVideo.getRTCPeerConnectionStats(track).then((reports: any) => {
+        reports.forEach((report: any) => {
           if (report.type === 'outbound-rtp') {
             duration = report.timestamp - duration;
             duration = duration / 1000;
@@ -2077,7 +2137,7 @@ export class DemoMeetingApp
       }
     );
     const cameras = await this.audioVideo.listVideoInputDevices();
-    this.cameraDeviceIds = cameras.map(deviceInfo => {
+    this.cameraDeviceIds = cameras.map((deviceInfo: any) => {
       return deviceInfo.deviceId;
     });
   }
@@ -2270,10 +2330,19 @@ export class DemoMeetingApp
         fatal(e);
         this.log(`failed to chooseVideoInputDevice ${device}`, e);
       }
-      this.log('no video device selected');
+      throw new Error('no video device selected');
     }
     try {
-      await this.audioVideo.chooseVideoInputDevice(device);
+      if (device.toString().search('MediaStream') === -1) {
+        const blurDevice = await new DefaultVideoTransformDevice(
+          this.meetingLogger,
+          device.toString(),
+          [await new BlurBackgroundProcessor()]
+        );
+        await this.audioVideo.chooseVideoInputDevice(blurDevice);
+      } else {
+        await this.audioVideo.chooseVideoInputDevice(device);
+      }
     } catch (e) {
       fatal(e);
       this.log(`failed to chooseVideoInputDevice ${device}`, e);
