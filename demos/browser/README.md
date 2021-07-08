@@ -2,6 +2,9 @@
 
 This demo shows how to use the Amazon Chime SDK to build meeting applications for browsers.
 
+## Forked -- Feature(s) added:
+ - Blur the video background with tensorflow and the bodyPix model (waiting for a new release to fix the memory leaks while `segmentPerson` is used in a loop ![issue here](https://github.com/tensorflow/tfjs/issues/3319)).
+
 ### Prerequisites
 
 To build, test, and run demos from source you will need:
