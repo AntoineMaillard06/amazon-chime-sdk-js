@@ -3,6 +3,10 @@
 
 <a href="https://www.npmjs.com/package/amazon-chime-sdk-js"><img src="https://img.shields.io/npm/v/amazon-chime-sdk-js?style=flat-square"></a>
 <a href="https://github.com/aws/amazon-chime-sdk-js/actions?query=workflow%3A%22Deploy+Demo+App+Workflow%22"><img src="https://github.com/aws/amazon-chime-sdk-js/workflows/Deploy%20Demo%20App%20Workflow/badge.svg"></a>
+
+## Forked -- Feature(s) added:
+ - In the `demos/browser` → Blur the video background with tensorflow and the bodyPix model (waiting for a new release to fix the memory leaks while `segmentPerson` is used in a loop ![issue here](https://github.com/tensorflow/tfjs/issues/3319)).
+
 ### Build video calling, audio calling, and screen sharing applications powered by Amazon Chime.
 
 The Amazon Chime SDK makes it easy to add collaborative audio calling,
