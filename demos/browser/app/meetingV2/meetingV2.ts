@@ -80,7 +80,12 @@ tf.setBackend('webgl');
 let model: any = null;
 
 const loadBodyPix = async () => {
-  model = await bodyPix.load();
+  model = await bodyPix.load({
+    architecture: 'MobileNetV1',
+    outputStride: 16,
+    multiplier: 0.5,
+    quantBytes: 4
+  });
 }
 
 loadBodyPix();
@@ -259,9 +264,19 @@ class BlurBackgroundProcessor implements VideoFrameProcessor {
         return buffers;
       }
 
-      // blurry video settings
-      const backgroundBlurAmount = 3;
-      const edgeBlurAmount = 3;
+      /* Blurry video settings
+      ***************************
+      ** backgroundBlurAmount
+        * -- How many pixels in the background blend into each other.
+        * Defaults to 3.
+        * Should be an integer between 1 and 20.
+      ** edgeBlurAmount
+        * --How many pixels to blur on the edge between the person and the background by.
+        * Defaults to 3.
+        * Should be an integer between 0 and 20.
+      */
+      const backgroundBlurAmount = 20;
+      const edgeBlurAmount = 20;
       const flipHorizontal = false;
 
       // execute segmentPerson and blur the background
